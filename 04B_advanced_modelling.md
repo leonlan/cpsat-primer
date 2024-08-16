@@ -16,15 +16,15 @@ usage.
 
 - [Tour Constraints](#04-modelling-circuit): `add_circuit`,
   `add_multiple_circuit`
-- [Automaton Constraints](#04-modelling-automaton): `add_automaton`
-- [Reservoir Constraints](#04-modelling-reservoir): `add_reservoir_constraint`,
-  `add_reservoir_constraint_with_active`
 - [Intervals](#04-modelling-intervals): `new_interval_var`,
   `new_interval_var_series`, `new_fixed_size_interval_var`,
   `new_optional_interval_var`, `new_optional_interval_var_series`,
   `new_optional_fixed_size_interval_var`,
   `new_optional_fixed_size_interval_var_series`,
   `add_no_overlap`,`add_no_overlap_2d`, `add_cumulative`
+- [Automaton Constraints](#04-modelling-automaton): `add_automaton`
+- [Reservoir Constraints](#04-modelling-reservoir): `add_reservoir_constraint`,
+  `add_reservoir_constraint_with_active`
 - [Piecewise Linear Constraints](#04-modelling-pwl): Not officially part of
   CP-SAT, but we provide some free copy&pasted code to do it.
 
@@ -240,116 +240,6 @@ in CP-SAT. Nevertheless, both formulations perform significantly worse than the
 `add_circuit` constraint for handling tours and paths in such problems. Unlike
 end users, the `add_circuit` constraint can utilize lazy constraints internally,
 offering a substantial advantage in solving the TSP.
-
-<a name="04-modelling-automaton"></a>
-
-### Automaton Constraints
-
-Automaton constraints model finite state machines, enabling the representation
-of feasible transitions between states. This is particularly useful in software
-verification, where it is essential to ensure that a program follows a specified
-sequence of states. Given the critical importance of verification in research,
-there is likely a dedicated audience that appreciates this constraint. However,
-others may prefer to proceed to the next section.
-
-|                  ![Automaton Example](https://raw.githubusercontent.com/d-krupke/cpsat-primer/main/images/automaton.png)                   |
-| :----------------------------------------------------------------------------------------------------------------------------------------: |
-| An example of a finite state machine with four states and seven transitions. State 0 is the initial state, and state 3 is the final state. |
-
-The automaton operates as follows: We have a list of integer variables
-`transition_variables` that represent the transition values. Starting from the
-`starting_state`, the next state is determined by the transition triple
-`(state, transition_value, next_state)` matching the first transition variable.
-If no such triple is found, the model is infeasible. This process repeats for
-each subsequent transition variable. It is crucial that the final transition
-leads to a final state (possibly via a loop); otherwise, the model remains
-infeasible.
-
-The state machine from the example can be modeled as follows:
-
-```python
-model = cp_model.CpModel()
-
-transition_variables = [model.new_int_var(0, 2, f"transition_{i}") for i in range(4)]
-transition_triples = [
-    (0, 0, 1),  # If in state 0 and the transition value is 0, go to state 1
-    (1, 0, 1),  # If in state 1 and the transition value is 0, stay in state 1
-    (1, 1, 2),  # If in state 1 and the transition value is 1, go to state 2
-    (2, 0, 0),  # If in state 2 and the transition value is 0, go to state 0
-    (2, 1, 1),  # If in state 2 and the transition value is 1, go to state 1
-    (2, 2, 3),  # If in state 2 and the transition value is 2, go to state 3
-    (3, 0, 3),  # If in state 3 and the transition value is 0, stay in state 3
-]
-
-model.add_automaton(
-    transition_variables=transition_variables,
-    starting_state=0,
-    final_states=[3],
-    transition_triples=transition_triples,
-)
-```
-
-The assignment `[0, 1, 2, 0]` would be a feasible solution for this model,
-whereas the assignment `[1, 0, 1, 2]` would be infeasible because state 0 has no
-transition for value 1. Similarly, the assignment `[0, 0, 1, 1]` would be
-infeasible as it does not end in a final state.
-
-<a name="04-modelling-reservoir"></a>
-
-### Reservoir Constraints
-
-Sometimes, we need to keep the balance between inflows and outflows of a
-reservoir. The name giving example is a water reservoir, where we need to keep
-the water level between a minimum and a maximum level. However, there are many
-other examples, such as maintaining a certain stock level in a warehouse, or
-ensuring a certain staffing level in a clinic. The `add_reservoir_constraint`
-constraint in CP-SAT allows you to model such problems easily. It takes a list
-of time variables, a list of change variables, and the minimum and maximum level
-of the reservoir. `time_vars[i]` represents the time at which the change
-`change_vars[i]` will be applied, thus both lists needs to be of the same
-length. The reservoir level starts at 0, and the minimum level has to be
-$\leq 0$ and the maximum level has to be $\geq 0$.
-
-```python
-time_vars = [model.new_int_var(0, 100, f"time_{i}") for i in range(10)]
-change_vars = [model.new_int_var(-10, 10, f"change_{i}") for i in range(10)]
-
-model.add_reservoir_constraint(
-    time_vars=time_vars,
-    change_vars=change_vars,
-    min_level=-20,
-    max_level=20,
-)
-```
-
-Additionally, the `add_reservoir_constraint_with_active` constraint allows you
-to model a reservoir with _optional_ changes. Here, we additionally have a list
-of Boolean variables `active_vars`, where `active_vars[i]` indicates if the
-change `change_vars[i]` takes place. If a change is not active, it is as if it
-does not exist, and the reservoir level remains the same, independent of the
-time and change values.
-
-```python
-time_vars = [model.new_int_var(0, 100, f"time_{i}") for i in range(10)]
-change_vars = [model.new_int_var(-10, 10, f"change_{i}") for i in range(10)]
-active_vars = [model.new_bool_var(f"active_{i}") for i in range(10)]
-
-model.add_reservoir_constraint_with_active(
-    time_vars=time_vars,
-    change_vars=change_vars,
-    active_vars=active_vars,
-    min_level=-20,
-    max_level=20,
-)
-```
-
-> [!NOTE]
->
-> The reservoir constraints can express conditions that are difficult to model
-> "by hand". However, while I do not have much experience with them, I would not
-> expect them to be particularly easy to optimize. Let me know if you have
-> either good or bad experiences with them in practice and for which problem
-> scales they work well.
 
 <a name="04-modelling-intervals"></a>
 
@@ -969,6 +859,116 @@ solver.parameters.use_pairwise_reasoning_in_no_overlap_2d = True
 
 With the latest version of CP-SAT, I did not notice a significant difference in
 performance when using these parameters.
+
+<a name="04-modelling-automaton"></a>
+
+### Automaton Constraints
+
+Automaton constraints model finite state machines, enabling the representation
+of feasible transitions between states. This is particularly useful in software
+verification, where it is essential to ensure that a program follows a specified
+sequence of states. Given the critical importance of verification in research,
+there is likely a dedicated audience that appreciates this constraint. However,
+others may prefer to proceed to the next section.
+
+|                  ![Automaton Example](https://raw.githubusercontent.com/d-krupke/cpsat-primer/main/images/automaton.png)                   |
+| :----------------------------------------------------------------------------------------------------------------------------------------: |
+| An example of a finite state machine with four states and seven transitions. State 0 is the initial state, and state 3 is the final state. |
+
+The automaton operates as follows: We have a list of integer variables
+`transition_variables` that represent the transition values. Starting from the
+`starting_state`, the next state is determined by the transition triple
+`(state, transition_value, next_state)` matching the first transition variable.
+If no such triple is found, the model is infeasible. This process repeats for
+each subsequent transition variable. It is crucial that the final transition
+leads to a final state (possibly via a loop); otherwise, the model remains
+infeasible.
+
+The state machine from the example can be modeled as follows:
+
+```python
+model = cp_model.CpModel()
+
+transition_variables = [model.new_int_var(0, 2, f"transition_{i}") for i in range(4)]
+transition_triples = [
+    (0, 0, 1),  # If in state 0 and the transition value is 0, go to state 1
+    (1, 0, 1),  # If in state 1 and the transition value is 0, stay in state 1
+    (1, 1, 2),  # If in state 1 and the transition value is 1, go to state 2
+    (2, 0, 0),  # If in state 2 and the transition value is 0, go to state 0
+    (2, 1, 1),  # If in state 2 and the transition value is 1, go to state 1
+    (2, 2, 3),  # If in state 2 and the transition value is 2, go to state 3
+    (3, 0, 3),  # If in state 3 and the transition value is 0, stay in state 3
+]
+
+model.add_automaton(
+    transition_variables=transition_variables,
+    starting_state=0,
+    final_states=[3],
+    transition_triples=transition_triples,
+)
+```
+
+The assignment `[0, 1, 2, 0]` would be a feasible solution for this model,
+whereas the assignment `[1, 0, 1, 2]` would be infeasible because state 0 has no
+transition for value 1. Similarly, the assignment `[0, 0, 1, 1]` would be
+infeasible as it does not end in a final state.
+
+<a name="04-modelling-reservoir"></a>
+
+### Reservoir Constraints
+
+Sometimes, we need to keep the balance between inflows and outflows of a
+reservoir. The name giving example is a water reservoir, where we need to keep
+the water level between a minimum and a maximum level. However, there are many
+other examples, such as maintaining a certain stock level in a warehouse, or
+ensuring a certain staffing level in a clinic. The `add_reservoir_constraint`
+constraint in CP-SAT allows you to model such problems easily. It takes a list
+of time variables, a list of change variables, and the minimum and maximum level
+of the reservoir. `time_vars[i]` represents the time at which the change
+`change_vars[i]` will be applied, thus both lists needs to be of the same
+length. The reservoir level starts at 0, and the minimum level has to be
+$\leq 0$ and the maximum level has to be $\geq 0$.
+
+```python
+time_vars = [model.new_int_var(0, 100, f"time_{i}") for i in range(10)]
+change_vars = [model.new_int_var(-10, 10, f"change_{i}") for i in range(10)]
+
+model.add_reservoir_constraint(
+    time_vars=time_vars,
+    change_vars=change_vars,
+    min_level=-20,
+    max_level=20,
+)
+```
+
+Additionally, the `add_reservoir_constraint_with_active` constraint allows you
+to model a reservoir with _optional_ changes. Here, we additionally have a list
+of Boolean variables `active_vars`, where `active_vars[i]` indicates if the
+change `change_vars[i]` takes place. If a change is not active, it is as if it
+does not exist, and the reservoir level remains the same, independent of the
+time and change values.
+
+```python
+time_vars = [model.new_int_var(0, 100, f"time_{i}") for i in range(10)]
+change_vars = [model.new_int_var(-10, 10, f"change_{i}") for i in range(10)]
+active_vars = [model.new_bool_var(f"active_{i}") for i in range(10)]
+
+model.add_reservoir_constraint_with_active(
+    time_vars=time_vars,
+    change_vars=change_vars,
+    active_vars=active_vars,
+    min_level=-20,
+    max_level=20,
+)
+```
+
+> [!NOTE]
+>
+> The reservoir constraints can express conditions that are difficult to model
+> "by hand". However, while I do not have much experience with them, I would not
+> expect them to be particularly easy to optimize. Let me know if you have
+> either good or bad experiences with them in practice and for which problem
+> scales they work well.
 
 <a name="04-modelling-pwl"></a>
 
